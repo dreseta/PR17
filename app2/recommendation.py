@@ -1,8 +1,10 @@
 import pandas as pd
 
-def recommend_segments(df, region, desired_length, difficulty, surface_type):
-    filtered = df[df['region'] == region]
+def recommend_segments(df, region, desired_length, difficulty):
+    # Filtriraj po regiji
+    filtered = df[df['region'] == region].copy()
 
+    # Filtriraj po težavnosti
     if difficulty != "Any":
         difficulty_map = {
             "Easy": (0, 4),
@@ -16,17 +18,22 @@ def recommend_segments(df, region, desired_length, difficulty, surface_type):
             (filtered['climb_score'] < max_diff)
         ]
 
-    if surface_type != "Any":
-        filtered = filtered[filtered['surface_type'] == surface_type]
-
-    # Find combinations of segments closest to desired total length
+    # Sortiraj po razdalji (v metrih)
     filtered = filtered.sort_values(by='distance')
-    selected = pd.DataFrame()
-    total = 0
 
+    selected = []
+    total_distance = 0
+
+    # Izberi segmente dokler skupna dolžina ne preseže želene dolžine
     for _, row in filtered.iterrows():
-        if total + row['distance'] <= desired_length * 1000:
-            selected = pd.concat([selected, pd.DataFrame([row])])
-            total += row['distance']
+        if total_distance + row['distance'] <= desired_length * 1000:
+            selected.append(row)
+            total_distance += row['distance']
 
-    return selected
+    # Prevedi iz seznama Series v DataFrame
+    if selected:
+        selected_df = pd.DataFrame(selected).reset_index(drop=True)
+    else:
+        selected_df = pd.DataFrame(columns=df.columns)
+
+    return selected_df

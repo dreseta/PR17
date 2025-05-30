@@ -1,46 +1,39 @@
-import pandas as pd
+import osmnx as ox
 import networkx as nx
-from haversine import haversine, Unit
+import pandas as pd
 
-def connect_segments(segments):
-    # Convert to graph based on proximity
-    G = nx.Graph()
-
-    for idx, seg in segments.iterrows():
-        start = (seg['start_latlng_lat'], seg['start_latlng_lon'])
-        end = (seg['end_latlng_lat'], seg['end_latlng_lon'])
-        G.add_node(idx, segment=seg, coord=start)
-
-    for i, s1 in segments.iterrows():
-        end1 = (s1['end_latlng_lat'], s1['end_latlng_lon'])
-        for j, s2 in segments.iterrows():
-            if i != j:
-                start2 = (s2['start_latlng_lat'], s2['start_latlng_lon'])
-                dist = haversine(end1, start2, unit=Unit.METERS)
-                if dist < 500:  # if within 500m
-                    G.add_edge(i, j, weight=dist)
-
-    if len(G.nodes) == 0:
+def connect_segments(segments, region_name="Slovenia"):
+    try:
+        G = ox.graph_from_place(region_name, network_type='bike', simplify=True)
+    except Exception as e:
+        print(f"Napaka pri prenosu omrežja: {e}")
         return pd.DataFrame()
 
-    path = list(nx.dfs_preorder_nodes(G))
-    route_segments = segments.loc[path]
-    latlngs = []
+    segment_list = segments.to_dict('records')
+    full_route = []
 
-    # build a path connecting segments
-    #try:
-    #    path = nx.approximation.traveling_salesman_problem(G, cycle=False)
-    #    return [segments.iloc[i] for i in path]
-    #except:
-    #    return segments  # fallback if TSP fails
+    for i in range(len(segment_list) - 1):
+        seg1 = segment_list[i]
+        seg2 = segment_list[i + 1]
 
-    for _, row in route_segments.iterrows():
-        latlngs.append({
-            "start_lat": row['start_latlng_lat'],
-            "start_lon": row['start_latlng_lon'],
-            "end_lat": row['end_latlng_lat'],
-            "end_lon": row['end_latlng_lon'],
-            "name": row['name']
-        })
+        end_point = (seg1['end_latlng_lat'], seg1['end_latlng_lon'])
+        start_point = (seg2['start_latlng_lat'], seg2['start_latlng_lon'])
 
-    return pd.DataFrame(latlngs)
+        try:
+            end_node = ox.distance.nearest_nodes(G, end_point[1], end_point[0])
+            start_node = ox.distance.nearest_nodes(G, start_point[1], start_point[0])
+
+            route_nodes = nx.shortest_path(G, end_node, start_node, weight='length')
+            path_coords = [(G.nodes[n]['x'], G.nodes[n]['y']) for n in route_nodes]
+            full_route.extend(path_coords)
+        except Exception as e:
+            print(f"Napaka pri iskanju poti med segmentoma {i} in {i+1}: {e}")
+            continue
+
+    first_seg = segment_list[0]
+    full_route.insert(0, (first_seg['start_latlng_lon'], first_seg['start_latlng_lat']))
+
+    # Odstrani podvojene točke
+    unique_route = [pt for i, pt in enumerate(full_route) if i == 0 or pt != full_route[i-1]]
+
+    return pd.DataFrame(unique_route, columns=["lon", "lat"])
