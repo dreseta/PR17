@@ -7,7 +7,7 @@ from streamlit_folium import st_folium
 
 from recommendation import recommend_segments  
 
-json_path = "data/segments.json"
+json_path = "app2/data/segments.json"
 
 @st.cache_data
 def load_segments(json_path):
